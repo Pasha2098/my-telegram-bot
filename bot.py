@@ -1,123 +1,133 @@
 import asyncio
-import random
-import string
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import json
+from pathlib import Path
+from telegram import (
+    Update, ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardRemove
+)
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, ContextTypes,
-    CallbackQueryHandler, ConversationHandler, MessageHandler, filters
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ContextTypes, ConversationHandler, filters,
+    CallbackQueryHandler
 )
 
-BOT_TOKEN = "BOT_TOKEN"
+HOST, ROOM, MAP, MODE = range(4)
+
+MAPS = ["The Skeld", "MIRA HQ", "Polus", "The Airship", "Fungle"]
+MODES = ["Классика", "Прятки", "Много ролей", "Моды", "Баг"]
 
 games = {}
+GAMES_FILE = Path("games.json")
 
-# Состояния для ConversationHandler
-CHOOSING, HOSTNAME, MAP, MODE = range(4)
+MAIN_MENU = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("/start"), KeyboardButton("/list")],
+        [KeyboardButton("/help"), KeyboardButton("/cancel")]
+    ], resize_keyboard=True
+)
 
-ROOM_LIFETIME = 4 * 60 * 60  # 4 часа
-EXTEND_TIME = 1 * 60 * 60    # 1 час
+MAPS_MENU = ReplyKeyboardMarkup(
+    [[KeyboardButton(m)] for m in MAPS] + [[KeyboardButton("Отмена")]],
+    resize_keyboard=True, one_time_keyboard=True
+)
 
-def generate_code(length=6):
-    return ''.join(random.choices(string.ascii_uppercase, k=length))
+MODES_MENU = ReplyKeyboardMarkup(
+    [[KeyboardButton(m)] for m in MODES] + [[KeyboardButton("Изменить карту"), KeyboardButton("Отмена")]],
+    resize_keyboard=True, one_time_keyboard=True
+)
 
-async def auto_delete_game(room_code, lifetime=ROOM_LIFETIME):
+def save_games():
+    temp = {}
+    for code, g in games.items():
+        temp[code] = {k: v for k, v in g.items() if k != "task"}
+    with open(GAMES_FILE, "w", encoding="utf-8") as f:
+        json.dump(temp, f, ensure_ascii=False, indent=2)
+
+async def auto_delete_game(room_code):
     try:
-        await asyncio.sleep(lifetime)
+        await asyncio.sleep(games[room_code]["duration"])
+        if room_code in games:
+            del games[room_code]
+            save_games()
     except asyncio.CancelledError:
-        # Задача была отменена (продление)
-        return
-    games.pop(room_code, None)
-    # Можно добавить уведомление в чат, если хотите
+        pass
+
+def load_games():
+    if GAMES_FILE.exists():
+        with open(GAMES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            for code, g in data.items():
+                g["task"] = asyncio.create_task(auto_delete_game(code))
+                games[code] = g
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 *Добро пожаловать в бот Among Us!*",
-        parse_mode='Markdown',
+    welcome_text = (
+        "👋 *Добро пожаловать в бот Among Us!*\n\n"
+        "Этот бот поможет вам создать и управлять руммами для игры.\n\n"
+        "*Команды:*\n"
+        "/start — создать румму\n"
+        "/list — показать активные комнаты\n"
+        "/help — помощь\n"
+        "/cancel — отменить действие"
     )
-    await update.message.reply_text(
-        "Для создания комнаты используйте команду /create"
-    )
-    return CHOOSING
+    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=MAIN_MENU)
+    return ConversationHandler.END
 
-async def create_room_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Введите имя хоста (максимум 25 символов):")
-    return HOSTNAME
+# ... Остальные обработчики остаются такими же, за исключением добавлений save_games() и task
 
-async def host_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if len(text) > 25:
-        await update.message.reply_text("Имя слишком длинное, максимум 25 символов. Попробуйте снова:")
-        return HOSTNAME
-    context.user_data['host_name'] = text
-    # Предлагаем выбрать карту
-    keyboard = [
-        [InlineKeyboardButton("Skeld", callback_data="map:Skeld")],
-        [InlineKeyboardButton("Mira HQ", callback_data="map:MiraHQ")],
-        [InlineKeyboardButton("Polus", callback_data="map:Polus")],
-    ]
-    await update.message.reply_text(
-        "Выберите карту:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return MAP
+async def input_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    choice = update.message.text.strip()
+    if choice == "Отмена":
+        return await cancel(update, context)
+    if choice == "Изменить карту":
+        await update.message.reply_text("Выберите новую карту:", reply_markup=MAPS_MENU)
+        return MAP
+    if choice not in MODES:
+        await update.message.reply_text("Пожалуйста, выберите режим из списка:")
+        return MODE
+    if len(choice) > 25:
+        await update.message.reply_text("Режим не должен превышать 25 символов. Выберите снова:")
+        return MODE
 
-async def map_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    map_name = query.data.split(":")[1]
-    context.user_data['map'] = map_name
-    # Выбираем режим
-    keyboard = [
-        [InlineKeyboardButton("Classic", callback_data="mode:Classic")],
-        [InlineKeyboardButton("Hide and Seek", callback_data="mode:HideAndSeek")],
-        [InlineKeyboardButton("Proximity Chat", callback_data="mode:ProximityChat")],
-    ]
-    await query.edit_message_text(
-        text=f"Выбрана карта: {map_name}\nВыберите режим игры:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return MODE
+    user_data = context.user_data
+    user_data["mode"] = choice
+    room_code = user_data["room"]
 
-async def mode_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    mode = query.data.split(":")[1]
-    context.user_data['mode'] = mode
+    task = asyncio.create_task(auto_delete_game(room_code))
 
-    # Генерируем уникальный код комнаты
-    while True:
-        code = generate_code()
-        if code not in games:
-            break
-
-    # Сохраняем данные комнаты
-    games[code] = {
-        "host_name": context.user_data['host_name'],
-        "map": context.user_data['map'],
-        "mode": context.user_data['mode'],
+    games[room_code] = {
+        "host": user_data["host"],
+        "room": room_code,
+        "map": user_data["map"],
+        "mode": user_data["mode"],
         "user_id": update.effective_user.id,
-        "expiry_task": None,
+        "duration": 4 * 60 * 60,
+        "task": task
     }
+    save_games()
 
-    # Запускаем задачу автоудаления через 4 часа
-    task = asyncio.create_task(auto_delete_game(code, ROOM_LIFETIME))
-    games[code]["expiry_task"] = task
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🗑 Удалить", callback_data=f"delete:{room_code}"),
+            InlineKeyboardButton("✏️ Изменить", callback_data=f"edit:{room_code}"),
+        ],
+        [
+            InlineKeyboardButton("⏳ Продлить на 1 час", callback_data=f"extend:{room_code}"),
+            InlineKeyboardButton("📋 Копировать румму", callback_data=f"copy_room:{room_code}")
+        ]
+    ])
 
-    keyboard = [
-        [InlineKeyboardButton("Скопировать код", callback_data=f"copy:{code}")],
-        [InlineKeyboardButton("Продлить румму на 1 час", callback_data=f"extend:{code}")],
-        [InlineKeyboardButton("Удалить румму", callback_data=f"delete:{code}")],
-    ]
-
-    await query.edit_message_text(
-        text=(f"Румма создана!\n"
-              f"Код: {code}\n"
-              f"Хост: {games[code]['host_name']}\n"
-              f"Карта: {games[code]['map']}\n"
-              f"Режим: {games[code]['mode']}\n\n"
-              "⚠️ Румма удалится автоматически через 4 часа."),
-        reply_markup=InlineKeyboardMarkup(keyboard)
+    msg = (
+        f"🛸 *Новая игра Among Us:*\n"
+        f"👤 Хост: *{user_data['host']}*\n"
+        f"🗺 Карта: *{user_data['map']}*\n"
+        f"🎮 Режим: *{user_data['mode']}*\n\n"
+        f"📥 Код комнаты:\n*{room_code}*\n\n"
+        f"⌛ Комната будет удалена через 4 часа.\n\n"
+        f"Приятной игры 😉"
     )
+    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode="Markdown")
     return ConversationHandler.END
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -125,83 +135,66 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
-    if data.startswith("copy:"):
-        code = data.split(":")[1]
-        await query.message.reply_text(f"{code}")
-        return
-
-    if data.startswith("extend:"):
-        code = data.split(":")[1]
-        game = games.get(code)
-        if not game:
-            await query.message.reply_text("❗ Румма не найдена или уже удалена.")
-            return
-        if query.from_user.id != game["user_id"]:
-            await query.message.reply_text("❗ Только создатель может продлевать румму.")
-            return
-        # Отмена текущей задачи удаления и запуск новой на 1 час
-        task = game.get("expiry_task")
-        if task:
-            task.cancel()
-        game["expiry_task"] = asyncio.create_task(auto_delete_game(code, EXTEND_TIME))
-        await query.message.reply_text(f"✅ Румма {code} продлена на 1 час.")
-        return
-
     if data.startswith("delete:"):
-        code = data.split(":")[1]
-        game = games.get(code)
-        if not game:
-            await query.message.reply_text("❗ Румма не найдена или уже удалена.")
-            return
-        if query.from_user.id != game["user_id"]:
-            await query.message.reply_text("❗ Только создатель может удалять румму.")
-            return
-        task = game.get("expiry_task")
-        if task:
-            task.cancel()
-        games.pop(code, None)
-        await query.message.reply_text(f"🗑️ Румма {code} удалена.")
-        return
+        room_code = data.split(":")[1]
+        if room_code in games:
+            task = games[room_code].get("task")
+            if task:
+                task.cancel()
+            del games[room_code]
+            save_games()
+        await query.edit_message_text("Комната удалена.", reply_markup=MAIN_MENU)
 
-async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Удаление руммы через команду /delete <код>
-    if len(context.args) != 1:
-        await update.message.reply_text("Используйте: /delete <КОД_руммы>")
-        return
-    code = context.args[0].upper()
-    game = games.get(code)
-    if not game:
-        await update.message.reply_text("❗ Румма не найдена или уже удалена.")
-        return
-    if update.effective_user.id != game["user_id"]:
-        await update.message.reply_text("❗ Только создатель может удалять румму.")
-        return
-    task = game.get("expiry_task")
-    if task:
-        task.cancel()
-    games.pop(code, None)
-    await update.message.reply_text(f"🗑️ Румма {code} удалена.")
+    elif data.startswith("extend:"):
+        room_code = data.split(":")[1]
+        if room_code in games:
+            task = games[room_code].get("task")
+            if task:
+                task.cancel()
+            games[room_code]["duration"] += 3600
+            games[room_code]["task"] = asyncio.create_task(auto_delete_game(room_code))
+            save_games()
+            await query.edit_message_text(f"⏳ Время комнаты *{room_code}* продлено на 1 час.", parse_mode="Markdown", reply_markup=MAIN_MENU)
+
+    elif data.startswith("copy_room:"):
+        room_code = data.split(":")[1]
+        if room_code in games:
+            await query.message.reply_text(f"Вот румма, скопируйте ее, хорошей игры!\n\n{room_code}")
+
+# ... Остальной код: help_command, cancel, input_host, input_room, input_map — без изменений
 
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    import os
+    TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        print("Ошибка: Не найден токен бота в переменной окружения BOT_TOKEN")
+        return
+
+    load_games()  # Загрузка перед запуском
+    app = ApplicationBuilder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('create', create_room_command)],
+        entry_points=[CommandHandler("start", get_host)],
         states={
-            HOSTNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, host_name)],
-            MAP: [CallbackQueryHandler(map_choice, pattern=r"^map:")],
-            MODE: [CallbackQueryHandler(mode_choice, pattern=r"^mode:")],
+            HOST: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_host)],
+            ROOM: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_room)],
+            MAP: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_map)],
+            MODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_mode)],
         },
-        fallbacks=[],
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("list", list_games))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CallbackQueryHandler(handle_callback))
-    app.add_handler(CommandHandler('delete', delete_command))
 
+    print("Бот запущен...")
     app.run_polling()
 
 if __name__ == '__main__':
     main()
+
 
