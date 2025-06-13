@@ -74,7 +74,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=MAIN_MENU)
     return ConversationHandler.END
 
-# ... Остальные обработчики остаются такими же, за исключением добавлений save_games() и task
+async def get_host(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Введите ваш ник (хост):", reply_markup=ReplyKeyboardRemove())
+    return HOST
+
+async def input_host(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["host"] = update.message.text.strip()
+    await update.message.reply_text("Введите код вашей комнаты (например, AB1234):")
+    return ROOM
+
+async def input_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    room_code = update.message.text.strip().upper()
+    if room_code in games:
+        await update.message.reply_text("Комната с таким кодом уже существует. Попробуйте другой:")
+        return ROOM
+    context.user_data["room"] = room_code
+    await update.message.reply_text("Выберите карту:", reply_markup=MAPS_MENU)
+    return MAP
+
+async def input_map(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    choice = update.message.text.strip()
+    if choice == "Отмена":
+        return await cancel(update, context)
+    if choice not in MAPS:
+        await update.message.reply_text("Пожалуйста, выберите карту из списка:")
+        return MAP
+    context.user_data["map"] = choice
+    await update.message.reply_text("Выберите режим игры:", reply_markup=MODES_MENU)
+    return MODE
 
 async def input_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choice = update.message.text.strip()
@@ -161,7 +188,32 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if room_code in games:
             await query.message.reply_text(f"Вот румма, скопируйте ее, хорошей игры!\n\n{room_code}")
 
-# ... Остальной код: help_command, cancel, input_host, input_room, input_map — без изменений
+async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not games:
+        await update.message.reply_text("Сейчас нет активных комнат.", reply_markup=MAIN_MENU)
+        return
+    msg = "📋 *Список активных комнат:*\n\n"
+    for code, g in games.items():
+        msg += (
+            f"👤 *{g['host']}* | 🗺 *{g['map']}* | 🎮 *{g['mode']}*\n"
+            f"🔑 Код: *{code}*\n\n"
+        )
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=MAIN_MENU)
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "📖 *Помощь:*\n\n"
+        "/start — создать новую комнату\n"
+        "/list — список активных комнат\n"
+        "/cancel — отменить создание комнаты\n"
+        "/help — показать это сообщение\n\n"
+        "Созданные комнаты удаляются автоматически через 4 часа или вручную через кнопку 🗑"
+    )
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=MAIN_MENU)
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Действие отменено.", reply_markup=MAIN_MENU)
+    return ConversationHandler.END
 
 def main():
     import os
@@ -184,7 +236,6 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("list", list_games))
     app.add_handler(CommandHandler("help", help_command))
@@ -196,5 +247,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
