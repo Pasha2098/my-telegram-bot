@@ -227,7 +227,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 task.cancel()
             del games[room_code]
             save_games()
-            await query.edit_message_text("Комната удалена.", reply_markup=MAIN_MENU)
+            await query.edit_message_text("Комната удалена.", reply_markup=None)  # исправлено
 
     elif data.startswith("extend:"):
         room_code = data.split(":")[1]
@@ -241,7 +241,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(
                 f"⏳ Время комнаты *{room_code}* продлено на 1 час.",
                 parse_mode="Markdown",
-                reply_markup=MAIN_MENU
+                reply_markup=None  # исправлено
             )
 
     elif data.startswith("copy_room:"):
@@ -336,32 +336,5 @@ def main():
     new_room_handler = ConversationHandler(
         entry_points=[CommandHandler("newroom", get_host)],
         states={
-            HOST: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_host)],
-            ROOM: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_room)],
-            MAP: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_map)],
-            MODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_mode)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
+            HOST: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_host
 
-    edit_conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(handle_callback, pattern=r"edit:.*")],
-        states={
-            MAP: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_map)],
-            MODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_mode)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        allow_reentry=True,
-    )
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("list", list_games))
-    application.add_handler(new_room_handler)
-    application.add_handler(edit_conv_handler)
-    application.add_handler(CallbackQueryHandler(handle_callback))
-
-    application.run_polling()
-
-if __name__ == "__main__":
-    main()
