@@ -7,7 +7,7 @@ from telegram.ext import (
     CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 )
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+BOT_TOKEN = "BOT_TOKEN"
 
 games = {}
 
