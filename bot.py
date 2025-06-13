@@ -192,7 +192,7 @@ async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for room_code, game in games.items():
         text_line = (
             f"👤 *{game['host']}*  |  🗺 *{game['map']}*  |  🎮 *{game['mode']}*  |  "
-            f"🔑 [{room_code}](copy_{room_code})"
+            f"🔑 `{room_code}`"
         )
         text_lines.append(text_line)
         buttons.append([InlineKeyboardButton(room_code, callback_data=f"copy_room:{room_code}")])
@@ -331,7 +331,7 @@ async def edit_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("new_map", None)
     return ConversationHandler.END
 
-BOT_TOKEN = "BOT_TOKEN"  # Здесь замените "BOT_TOKEN" на реальный токен вашего бота
+BOT_TOKEN = "7744582303:AAHRSRSGWRXafEexdx59hQQ6pj8N2dvgl9g"  # Твой токен
 
 if __name__ == "__main__":
     load_games()
@@ -349,12 +349,13 @@ if __name__ == "__main__":
     )
 
     edit_conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(handle_callback, pattern=r"edit:.*")],
+        entry_points=[CallbackQueryHandler(handle_callback, pattern=r"edit:.*", per_message=True)],
         states={
             MAP: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_map)],
             MODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_mode)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
     )
 
     app.add_handler(CommandHandler("start", start))
@@ -362,6 +363,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("list", list_games))
     app.add_handler(conv_handler)
     app.add_handler(edit_conv_handler)
-    app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(CallbackQueryHandler(handle_callback, pattern="^(delete:|extend:|copy_room:)$"))
 
     app.run_polling()
