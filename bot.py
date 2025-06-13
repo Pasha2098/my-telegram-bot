@@ -23,10 +23,22 @@ COMMANDS_MENU = ReplyKeyboardMarkup(
 )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Добро пожаловать в мир Among Us!\nВведите имя хоста:",
-        reply_markup=ReplyKeyboardRemove()
+    welcome_msg = (
+        "👋 *Добро пожаловать в бот Among Us!*
+\n"
+        "Создавайте свои комнаты, делитесь кодом с друзьями и выбирайте режим игры! 🎮\n\n"
+        "📜 *Правила:*\n"
+        "1. Комната живёт 5 часов.\n"
+        "2. Код — только заглавные буквы A-Z.\n"
+        "3. Не публикуйте спам.\n\n"
+        "🛠 *Команды:*\n"
+        "/start — создать новую румму\n"
+        "/list — список активных румм\n"
+        "/cancel — отменить создание\n"
+        "/help — справка по боту\n"
     )
+    await update.message.reply_text(welcome_msg, parse_mode="Markdown", reply_markup=COMMANDS_MENU)
+    await update.message.reply_text("Введите имя хоста:", reply_markup=ReplyKeyboardRemove())
     return HOST
 
 async def get_host(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -88,8 +100,9 @@ async def get_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🗑 Удалить", callback_data=f"delete:{room_code}"),
-            InlineKeyboardButton("✏️ Изменить", callback_data=f"edit:{room_code}")
+            InlineKeyboardButton("📋 Копировать румму", callback_data=f"copy:{room_code}"),
+            InlineKeyboardButton("✏️ Изменить", callback_data=f"edit:{room_code}"),
+            InlineKeyboardButton("🗑 Удалить", callback_data=f"delete:{room_code}")
         ]
     ])
 
@@ -114,10 +127,12 @@ async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not games:
         await update.message.reply_text("Нет активных комнат.", reply_markup=COMMANDS_MENU)
         return
-    msg = "🎮 Активные комнаты:\n\n"
     for g in games.values():
-        msg += f"👤 {g['host']} | Комната: {g['room']} | Карта: {g['map']} | Режим: {g['mode']}\n"
-    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=COMMANDS_MENU)
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📋 Копировать румму", callback_data=f"copy:{g['room']}")]
+        ])
+        msg = f"👤 {g['host']} | Комната: *{g['room']}*\nКарта: {g['map']} | Режим: {g['mode']}"
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
@@ -148,6 +163,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = ReplyKeyboardMarkup([[KeyboardButton(m)] for m in MAPS] + [["Отмена"]], resize_keyboard=True, one_time_keyboard=True)
         await query.message.reply_text("Выберите новую карту:", reply_markup=reply_markup)
         return MAP
+    elif data.startswith("copy:"):
+        room_code = data.split(":")[1]
+        await query.message.reply_text(f"Вот румма, скопируйте её. Хорошей игры 🎮:\n{room_code}")
+
 
 def main():
     import os
@@ -175,3 +194,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
