@@ -17,92 +17,50 @@ games = {}
 
 # Списки
 MAPS = ["The Skeld", "MIRA HQ", "Polus", "The Airship", "Fungle"]
-MODES = ["Классика", "Прятки", "Много ролей", "Моды", "Баг румма ❗"]
+MODES = ["Классика", "Прятки", "Много ролей", "Моды", "Баг"]
 
-# Меню команд
+# Команды меню
 COMMANDS_MENU = ReplyKeyboardMarkup([
-    [
-        KeyboardButton("🎮 Создать румму"),
-        KeyboardButton("📋 Посмотреть руммы")
-    ],
-    [
-        KeyboardButton("❓ Помощь")
-    ]
+    ["/start - Создать румму"],
+    ["/list - Список румм"],
+    ["/cancel - Отменить"],
+    ["/help - Помощь"]
 ], resize_keyboard=True)
 
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет! Это бот для создания румм Among Us. Выбери действие:",
-        reply_markup=COMMANDS_MENU
-    )
-
-# Команды меню
-async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text == "🎮 Создать румму":
-        await update.message.reply_text("Введите имя хоста:")
-        return HOST
-    elif text == "📋 Посмотреть руммы":
-        await list_games(update, context)
-        return ConversationHandler.END
-    elif text == "❓ Помощь":
-        await help_command(update, context)
-        return ConversationHandler.END
-    else:
-        await update.message.reply_text("Неизвестная команда.")
-        return ConversationHandler.END
+    await update.message.reply_text("Привет! Добро пожаловать в мир Among Us!", reply_markup=COMMANDS_MENU)
+    await update.message.reply_text("Введите имя хоста:")
+    return HOST
 
 async def get_host(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    host = update.message.text.strip()
-    if len(host) > 25:
-        await update.message.reply_text("Имя хоста слишком длинное. Попробуйте снова:")
+    if len(update.message.text) > 25:
+        await update.message.reply_text("Имя хоста должно быть до 25 символов. Попробуйте снова:")
         return HOST
-    context.user_data["host"] = host
+    context.user_data["host"] = update.message.text
     await update.message.reply_text("Введите код комнаты (только заглавные буквы A-Z):")
     return ROOM
 
 async def get_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    room_code = update.message.text.strip().upper()
-    if not room_code.isalpha() or not room_code.isupper():
-        await update.message.reply_text("❗ У вас неверный формат! Все буквы должны быть заглавными A-Z")
+    room = update.message.text.upper()
+    if not room.isalpha() or not room.isupper():
+        await update.message.reply_text("У вас неверный формат! Все буквы должны быть написаны заглавными A-Z.")
         return ROOM
-    context.user_data["room"] = room_code
-    reply_markup = ReplyKeyboardMarkup(
-        [[KeyboardButton(m)] for m in MAPS] + [[KeyboardButton("⬅️ Отменить")]],
-        one_time_keyboard=True, resize_keyboard=True
-    )
-    await update.message.reply_text("Выбери карту:", reply_markup=reply_markup)
+    context.user_data["room"] = room
+    reply_markup = ReplyKeyboardMarkup([[KeyboardButton(m)] for m in MAPS], one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Выберите карту:", reply_markup=reply_markup)
     return MAP
 
 async def get_map(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    choice = update.message.text
-    if choice == "⬅️ Отменить":
-        await update.message.reply_text("Создание отменено.", reply_markup=COMMANDS_MENU)
-        return ConversationHandler.END
-    if choice not in MAPS:
-        await update.message.reply_text("Выбери карту из списка")
-        return MAP
-    context.user_data["map"] = choice
-    reply_markup = ReplyKeyboardMarkup(
-        [[KeyboardButton(m)] for m in MODES] + [[KeyboardButton("⬅️ Отменить")]],
-        one_time_keyboard=True, resize_keyboard=True
-    )
-    await update.message.reply_text("Выбери режим:", reply_markup=reply_markup)
+    context.user_data["map"] = update.message.text
+    reply_markup = ReplyKeyboardMarkup([[KeyboardButton(m)] for m in MODES], one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Выберите режим игры:", reply_markup=reply_markup)
     return MODE
 
 async def get_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    choice = update.message.text
-    if choice == "⬅️ Отменить":
-        await update.message.reply_text("Создание отменено.", reply_markup=COMMANDS_MENU)
-        return ConversationHandler.END
-    if choice not in MODES:
-        await update.message.reply_text("Выбери режим из списка")
-        return MODE
-
     user_data = context.user_data
+    user_data["mode"] = update.message.text
     room_code = user_data["room"]
-    user_data["mode"] = choice
 
     games[room_code] = {
         "host": user_data["host"],
@@ -122,24 +80,29 @@ async def get_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     msg = (
-        f"🛸 *Новая игра Among Us:*\n"
-        f"👤 Хост: *{user_data['host']}*\n"
-        f"🗺 Карта: *{user_data['map']}*\n"
-        f"🎮 Режим: *{user_data['mode']}*\n\n"
-        f"📥 Код комнаты:\n{room_code}\n\n"
-        f"⌛ Эта комната будет удалена через 5 часов.\n"
-        f"\nПриятной игры 😉"
+        f"🛸 *Новая игра Among Us:*
+"
+        f"👤 Хост: *{user_data['host']}*
+"
+        f"🗺 Карта: *{user_data['map']}*
+"
+        f"🎮 Режим: *{user_data['mode']}*
+"
+        f"📥 Код комнаты:
+`{room_code}`
+"
+        f"⌛ Комната будет удалена через 5 часов.\n\nПриятной игры 😉"
     )
 
-    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode="Markdown", reply_markup=COMMANDS_MENU)
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
     return ConversationHandler.END
 
 async def auto_delete_game(room_code):
-    await asyncio.sleep(5 * 60 * 60)
+    await asyncio.sleep(5 * 60 * 60)  # 5 часов
     games.pop(room_code, None)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Создание отменено.", reply_markup=COMMANDS_MENU)
+    await update.message.reply_text("Окей, отменено. Напишите /start, чтобы начать заново.", reply_markup=COMMANDS_MENU)
     return ConversationHandler.END
 
 async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -152,55 +115,88 @@ async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += (
             f"👤 {g['host']} | Комната: {g['room']} | Карта: {g['map']} | Режим: {g['mode']}\n"
         )
-    msg += "\nПриятной игры 😉"
     await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=COMMANDS_MENU)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "ℹ️ *Что умеет бот:*\n"
-        "\n- Создавать руммы Among Us\n"
-        "- Выводить активные комнаты\n"
-        "- Автоматически удалять комнаты через 5 часов\n"
-        "\n📌 Команды:\n"
-        "/start — Главное меню\n"
-        "/cancel — Отмена создания\n"
-        "\nПриятной игры!"
+        "🛠 *Доступные команды:*
+"
+        "/start — Создать румму\n"
+        "/list — Посмотреть активные руммы\n"
+        "/cancel — Отменить текущий ввод\n"
+        "/help — Показать это сообщение"
     )
     await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=COMMANDS_MENU)
 
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
-    if data.startswith("delete:"):
-        room_code = data.split(":")[1]
-        if room_code in games:
-            games.pop(room_code)
-            await query.edit_message_text("❌ Комната удалена.")
-    elif data.startswith("edit:"):
-        await query.edit_message_text("✏️ Функция редактирования пока в разработке.")
 
-if __name__ == "__main__":
+    if data.startswith("delete:"):
+        code = data.split(":")[1]
+        games.pop(code, None)
+        await query.edit_message_text("Комната удалена.")
+
+    elif data.startswith("edit:"):
+        code = data.split(":")[1]
+        game = games.get(code)
+        if game and game["user_id"] == query.from_user.id:
+            context.user_data.update(game)
+            await query.edit_message_text("Выберите новую карту:",
+                                          reply_markup=ReplyKeyboardMarkup([[KeyboardButton(m)] for m in MAPS], one_time_keyboard=True, resize_keyboard=True))
+            return EDIT_MAP
+        else:
+            await query.edit_message_text("Вы не можете редактировать эту комнату.")
+
+    return ConversationHandler.END
+
+async def edit_map(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["map"] = update.message.text
+    reply_markup = ReplyKeyboardMarkup([[KeyboardButton(m)] for m in MODES], one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Выберите новый режим:", reply_markup=reply_markup)
+    return EDIT_MODE
+
+async def edit_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["mode"] = update.message.text
+    room_code = context.user_data["room"]
+
+    if room_code in games:
+        games[room_code].update({
+            "map": context.user_data["map"],
+            "mode": context.user_data["mode"]
+        })
+        await update.message.reply_text("Комната обновлена!", reply_markup=COMMANDS_MENU)
+    else:
+        await update.message.reply_text("Комната не найдена.", reply_markup=COMMANDS_MENU)
+
+    return ConversationHandler.END
+
+if __name__ == '__main__':
     import os
     TOKEN = os.getenv("BOT_TOKEN")
 
     app = ApplicationBuilder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("🎮 Создать румму"), get_host)],
+        entry_points=[CommandHandler("start", start)],
         states={
             HOST: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_host)],
             ROOM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_room)],
             MAP: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_map)],
             MODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_mode)],
+            EDIT_MAP: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_map)],
+            EDIT_MODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_mode)],
         },
-        fallbacks=[CommandHandler("cancel", cancel)]
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.Regex("^(📋 Посмотреть руммы|❓ Помощь)$"), menu_handler))
-    app.add_handler(CallbackQueryHandler(callback_handler))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("list", list_games))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(CommandHandler("cancel", cancel))
 
     print("Бот запущен...")
     app.run_polling()
+
