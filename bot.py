@@ -331,7 +331,7 @@ async def edit_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     load_games()
-    application = ApplicationBuilder().token("YOUR_BOT_TOKEN").build()
+    application = ApplicationBuilder().token("7744582303:AAHRSRSGWRXafEexdx59hQQ6pj8N2dvgl9g").build()
 
     new_room_handler = ConversationHandler(
         entry_points=[CommandHandler("newroom", get_host)],
