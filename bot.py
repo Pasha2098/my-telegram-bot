@@ -22,23 +22,26 @@ COMMANDS_MENU = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+GREETING_TEXT = (
+    "👋 *Добро пожаловать в бот Among Us!*\n\n"
+    "🚀 Здесь вы можете создавать и искать комнаты для игры.\n\n"
+    "📜 *Правила:*\n"
+    "1. Используйте только заглавные буквы A-Z для кода комнаты.\n"
+    "2. Уважайте других игроков.\n"
+    "3. Комнаты удаляются через 5 часов.\n\n"
+    "🛠 *Доступные команды:*\n"
+    "/start — создать румму\n"
+    "/list — показать активные комнаты\n"
+    "/cancel — отменить создание\n"
+    "/help — помощь\n"
+)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_msg = (
-        "👋 *Добро пожаловать в бот Among Us!*
-\n"
-        "Создавайте свои комнаты, делитесь кодом с друзьями и выбирайте режим игры! 🎮\n\n"
-        "📜 *Правила:*\n"
-        "1. Комната живёт 5 часов.\n"
-        "2. Код — только заглавные буквы A-Z.\n"
-        "3. Не публикуйте спам.\n\n"
-        "🛠 *Команды:*\n"
-        "/start — создать новую румму\n"
-        "/list — список активных румм\n"
-        "/cancel — отменить создание\n"
-        "/help — справка по боту\n"
+    await update.message.reply_text(GREETING_TEXT, parse_mode="Markdown", reply_markup=COMMANDS_MENU)
+    await update.message.reply_text(
+        "Введите имя хоста:",
+        reply_markup=ReplyKeyboardRemove()
     )
-    await update.message.reply_text(welcome_msg, parse_mode="Markdown", reply_markup=COMMANDS_MENU)
-    await update.message.reply_text("Введите имя хоста:", reply_markup=ReplyKeyboardRemove())
     return HOST
 
 async def get_host(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -100,9 +103,9 @@ async def get_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📋 Копировать румму", callback_data=f"copy:{room_code}"),
+            InlineKeyboardButton("🗑 Удалить", callback_data=f"delete:{room_code}"),
             InlineKeyboardButton("✏️ Изменить", callback_data=f"edit:{room_code}"),
-            InlineKeyboardButton("🗑 Удалить", callback_data=f"delete:{room_code}")
+            InlineKeyboardButton("📋 Копировать румму", callback_data=f"copy_room:{room_code}")
         ]
     ])
 
@@ -127,22 +130,13 @@ async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not games:
         await update.message.reply_text("Нет активных комнат.", reply_markup=COMMANDS_MENU)
         return
+    msg = "🎮 *Активные комнаты:*\n\n"
     for g in games.values():
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📋 Копировать румму", callback_data=f"copy:{g['room']}")]
-        ])
-        msg = f"👤 {g['host']} | Комната: *{g['room']}*\nКарта: {g['map']} | Режим: {g['mode']}"
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        msg += f"👤 {g['host']} | Комната: {g['room']} | Карта: {g['map']} | Режим: {g['mode']}\n"
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=COMMANDS_MENU)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = (
-        "🆘 Помощь:\n"
-        "/start — создать новую румму\n"
-        "/list — показать активные комнаты\n"
-        "/cancel — отменить создание\n"
-        "/help — помощь"
-    )
-    await update.message.reply_text(msg, reply_markup=COMMANDS_MENU)
+    await update.message.reply_text(GREETING_TEXT, parse_mode="Markdown", reply_markup=COMMANDS_MENU)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Окей, отменено. Напишите /start, чтобы начать заново.", reply_markup=COMMANDS_MENU)
@@ -163,10 +157,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = ReplyKeyboardMarkup([[KeyboardButton(m)] for m in MAPS] + [["Отмена"]], resize_keyboard=True, one_time_keyboard=True)
         await query.message.reply_text("Выберите новую карту:", reply_markup=reply_markup)
         return MAP
-    elif data.startswith("copy:"):
+    elif data.startswith("copy_room:"):
         room_code = data.split(":")[1]
-        await query.message.reply_text(f"Вот румма, скопируйте её. Хорошей игры 🎮:\n{room_code}")
-
+        await query.message.reply_text(f"Вот румма, скопируйте ее, хорошей игры!\n\n{room_code}", reply_markup=COMMANDS_MENU)
 
 def main():
     import os
@@ -194,4 +187,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
