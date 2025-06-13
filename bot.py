@@ -336,5 +336,5 @@ def main():
     new_room_handler = ConversationHandler(
         entry_points=[CommandHandler("newroom", get_host)],
         states={
-            HOST: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_host
+            HOST: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_host)
 
