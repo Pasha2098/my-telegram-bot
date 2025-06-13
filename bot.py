@@ -1,3 +1,6 @@
+Вот полный твой код с заменой строки токена на использование константы `BOT_TOKEN` в начале и соответствующим исправлением в `main()`:
+
+```python
 import asyncio
 import json
 from pathlib import Path
@@ -19,6 +22,8 @@ MODES = ["Классика", "Прятки", "Много ролей", "Моды"
 
 games = {}
 GAMES_FILE = Path("games.json")
+
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"  # <-- здесь укажи свой токен
 
 MAIN_MENU = ReplyKeyboardMarkup(
     [
@@ -138,11 +143,9 @@ async def input_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data["mode"] = choice
     room_code = user_data["room"]
 
-    # Проверяем, есть ли уже румма с таким пользователем — на всякий случай (дублирование защиты)
     user_id = update.effective_user.id
     for code, game in games.items():
         if game["user_id"] == user_id:
-            # Отменяем старую румму
             task = game.get("task")
             if task:
                 task.cancel()
@@ -193,13 +196,11 @@ async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = []
     text_lines = []
     for room_code, game in games.items():
-        # Формируем строку с данными и кнопку для копирования кода
         text_line = (
             f"👤 *{game['host']}*  |  🗺 *{game['map']}*  |  🎮 *{game['mode']}*  |  "
-            f"🔑 [{room_code}](copy_{room_code})"
+            f"🔑 `{room_code}`"
         )
         text_lines.append(text_line)
-        # Кнопка с callback для копирования кода
         buttons.append([InlineKeyboardButton(room_code, callback_data=f"copy_room:{room_code}")])
 
     text = "*Активные руммы:*\n\n" + "\n".join(text_lines)
@@ -254,133 +255,5 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if room_code in games:
             game = games[room_code]
             msg = (
-                f"📋 *Копия комнаты:*\n"
-                f"👤 Хост: *{game['host']}*\n"
-                f"🗺 Карта: *{game['map']}*\n"
-                f"🎮 Режим: *{game['mode']}*\n\n"
-                f"🔑 Код: `{room_code}`\n\n"
-                f"_Скопируйте этот код и поделитесь с друзьями!_"
-            )
-            await query.message.reply_text(msg, parse_mode="Markdown")
-
-    elif data.startswith("edit:"):
-        room_code = data.split(":")[1]
-        if room_code not in games:
-            await query.answer("Комната не найдена.", show_alert=True)
-            return
-        game = games[room_code]
-        user_id = update.effective_user.id
-        if game["user_id"] != user_id:
-            await query.answer("Вы не можете редактировать чужую румму.", show_alert=True)
-            return
-        # Начинаем редактирование — предложим выбрать карту заново
-        await query.message.reply_text("Выберите новую карту:", reply_markup=MAPS_MENU)
-        context.user_data["edit_room"] = room_code
-        await query.answer()
-        return MAP
-
-async def edit_map(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if "edit_room" not in context.user_data:
-        await update.message.reply_text("Нет руммы для редактирования.", reply_markup=MAIN_MENU)
-        return ConversationHandler.END
-
-    choice = update.message.text.strip()
-    if choice == "Отмена":
-        await update.message.reply_text("Редактирование отменено.", reply_markup=MAIN_MENU)
-        return ConversationHandler.END
-
-    if choice not in MAPS:
-        await update.message.reply_text("Пожалуйста, выберите карту из списка:")
-        return MAP
-
-    context.user_data["new_map"] = choice
-    await update.message.reply_text("Выберите новый режим игры:", reply_markup=MODES_MENU)
-    return MODE
-
-async def edit_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if "edit_room" not in context.user_data:
-        await update.message.reply_text("Нет руммы для редактирования.", reply_markup=MAIN_MENU)
-        return ConversationHandler.END
-
-    choice = update.message.text.strip()
-    if choice == "Отмена":
-        await update.message.reply_text("Редактирование отменено.", reply_markup=MAIN_MENU)
-        return ConversationHandler.END
-
-    if choice == "Изменить карту":
-        await update.message.reply_text("Выберите новую карту:", reply_markup=MAPS_MENU)
-        return MAP
-
-    if choice not in MODES:
-        await update.message.reply_text("Пожалуйста, выберите режим из списка:")
-        return MODE
-
-    room_code = context.user_data["edit_room"]
-    game = games.get(room_code)
-    if not game:
-        await update.message.reply_text("Румма не найдена.", reply_markup=MAIN_MENU)
-        return ConversationHandler.END
-
-    # Обновляем данные
-    game["map"] = context.user_data.get("new_map", game["map"])
-    game["mode"] = choice
-    save_games()
-
-    msg = (
-        f"🛸 *Румма обновлена:*\n"
-        f"👤 Хост: *{game['host']}*\n"
-        f"🗺 Карта: *{game['map']}*\n"
-        f"🎮 Режим: *{game['mode']}*\n\n"
-        f"📥 Код комнаты: *{room_code}*"
-    )
-    await update.message.reply_text(msg, reply_markup=MAIN_MENU, parse_mode="Markdown")
-    context.user_data.pop("edit_room", None)
-    context.user_data.pop("new_map", None)
-    return ConversationHandler.END
-
-
-def main():
-    load_games()
-    app = ApplicationBuilder().token("YOUR_BOT_TOKEN_HERE").build()
-
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("newroom", get_host)],
-        states={
-            HOST: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_host)],
-            ROOM: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_room)],
-            MAP: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, input_map),
-                # Для редактирования карты:
-                CommandHandler("cancel", cancel),
-            ],
-            MODE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, input_mode),
-                # Редактирование режима:
-                CommandHandler("cancel", cancel),
-            ],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-
-    # Редактирование руммы через отдельный ConversationHandler
-    edit_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(handle_callback, pattern="^edit:")],
-        states={
-            MAP: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_map)],
-            MODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_mode)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        map_to_parent={
-            ConversationHandler.END: ConversationHandler.END,
-        }
-    )
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("list", list_games))
-    app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(handle_callback))
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+                f"📋 *Копия комнаты
+```
