@@ -1,6 +1,5 @@
 import asyncio
 import json
-import re
 from pathlib import Path
 from telegram import (
     Update, ReplyKeyboardMarkup, KeyboardButton,
@@ -23,7 +22,7 @@ GAMES_FILE = Path("games.json")
 
 MAIN_MENU = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("/start"), KeyboardButton("/list")],
+        [KeyboardButton("/create"), KeyboardButton("/list")],
         [KeyboardButton("/help"), KeyboardButton("/cancel")]
     ], resize_keyboard=True
 )
@@ -62,14 +61,12 @@ def load_games():
                 g["task"] = asyncio.create_task(auto_delete_game(code))
                 games[code] = g
 
-# --- Обработчики ---
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "👋 *Добро пожаловать в бот Among Us!*\n\n"
         "Этот бот поможет вам создать и управлять руммами для игры.\n\n"
         "*Команды:*\n"
-        "/start — создать румму\n"
+        "/create — создать румму\n"
         "/list — показать активные комнаты\n"
         "/help — помощь\n"
         "/cancel — отменить действие"
@@ -78,30 +75,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def get_host(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Введите имя хоста (до 25 символов):",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text("Введите имя хоста (до 25 символов):", reply_markup=ReplyKeyboardRemove())
     return HOST
 
 async def input_host(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if len(text) == 0 or len(text) > 25:
-        await update.message.reply_text("Имя хоста должно быть от 1 до 25 символов. Попробуйте снова:")
+    host = update.message.text.strip()
+    if len(host) == 0 or len(host) > 25:
+        await update.message.reply_text("Имя хоста должно быть от 1 до 25 символов. Введите снова:")
         return HOST
-    context.user_data["host"] = text
-    await update.message.reply_text("Введите код комнаты (6 заглавных букв латиницы):")
+    context.user_data["host"] = host
+    await update.message.reply_text("Введите код комнаты (6 заглавных букв A-Z):")
     return ROOM
 
 async def input_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if not re.fullmatch(r"[A-Z]{6}", text):
-        await update.message.reply_text("Код комнаты должен состоять из 6 заглавных латинских букв. Попробуйте снова:")
+    room_code = update.message.text.strip().upper()
+    if len(room_code) != 6 or not room_code.isalpha() or not room_code.isupper():
+        await update.message.reply_text("❗ Код комнаты должен быть ровно 6 заглавных букв A-Z. Попробуйте снова:")
         return ROOM
-    if text in games:
-        await update.message.reply_text("Эта комната уже существует, введите другой код:")
+    if room_code in games:
+        await update.message.reply_text("Этот код комнаты уже используется. Введите другой код:")
         return ROOM
-    context.user_data["room"] = text
+    context.user_data["room"] = room_code
     await update.message.reply_text("Выберите карту:", reply_markup=MAPS_MENU)
     return MAP
 
@@ -113,7 +107,7 @@ async def input_map(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пожалуйста, выберите карту из списка:")
         return MAP
     context.user_data["map"] = choice
-    await update.message.reply_text("Выберите режим игры:", reply_markup=MODES_MENU)
+    await update.message.reply_text("Выберите режим:", reply_markup=MODES_MENU)
     return MODE
 
 async def input_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -134,7 +128,6 @@ async def input_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data["mode"] = choice
     room_code = user_data["room"]
 
-    # Запускаем задачу автоудаления комнаты через 4 часа
     task = asyncio.create_task(auto_delete_game(room_code))
 
     games[room_code] = {
@@ -171,6 +164,29 @@ async def input_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, reply_markup=keyboard, parse_mode="Markdown")
     return ConversationHandler.END
 
+async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not games:
+        await update.message.reply_text("Нет активных комнат.", reply_markup=MAIN_MENU)
+        return
+    msg = "🎮 *Активные комнаты:*\n\n"
+    for g in games.values():
+        msg += f"👤 {g['host']}\n"
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=MAIN_MENU)
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = (
+        "🆘 *Помощь:*\n"
+        "/create — создать новую румму\n"
+        "/list — показать активные комнаты\n"
+        "/cancel — отменить создание\n"
+        "/help — помощь"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=MAIN_MENU)
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Окей, отменено. Напишите /create, чтобы начать заново.", reply_markup=MAIN_MENU)
+    return ConversationHandler.END
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -186,13 +202,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_games()
         await query.edit_message_text("Комната удалена.", reply_markup=MAIN_MENU)
 
+    elif data.startswith("edit:"):
+        room_code = data.split(":")[1]
+        if room_code not in games:
+            await query.edit_message_text("Комната не найдена или уже удалена.", reply_markup=MAIN_MENU)
+            return
+        context.user_data.update(games[room_code])
+        await query.message.reply_text("Выберите новую карту:", reply_markup=MAPS_MENU)
+        return MAP
+
     elif data.startswith("extend:"):
         room_code = data.split(":")[1]
         if room_code in games:
             task = games[room_code].get("task")
             if task:
                 task.cancel()
-            games[room_code]["duration"] += 3600  # Добавляем 1 час
+            games[room_code]["duration"] += 3600
             games[room_code]["task"] = asyncio.create_task(auto_delete_game(room_code))
             save_games()
             await query.edit_message_text(f"⏳ Время комнаты *{room_code}* продлено на 1 час.", parse_mode="Markdown", reply_markup=MAIN_MENU)
@@ -202,31 +227,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if room_code in games:
             await query.message.reply_text(f"Вот румма, скопируйте её, хорошей игры!\n\n{room_code}")
 
-async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not games:
-        await update.message.reply_text("Сейчас нет активных комнат.", reply_markup=MAIN_MENU)
-        return
-    msg_lines = ["*Список активных комнат:*"]
-    for code, g in games.items():
-        msg_lines.append(f"Код: *{code}* — Хост: *{g['host']}*")
-    msg = "\n".join(msg_lines)
-    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=MAIN_MENU)
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "Этот бот позволяет создавать и управлять комнатами для игры Among Us.\n\n"
-        "Команды:\n"
-        "/start — начать создание комнаты\n"
-        "/list — показать все активные комнаты\n"
-        "/help — показать это сообщение\n"
-        "/cancel — отменить текущее действие"
-    )
-    await update.message.reply_text(help_text, reply_markup=MAIN_MENU)
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Действие отменено.", reply_markup=MAIN_MENU)
-    return ConversationHandler.END
-
 def main():
     import os
     TOKEN = os.getenv("BOT_TOKEN")
@@ -234,11 +234,11 @@ def main():
         print("Ошибка: Не найден токен бота в переменной окружения BOT_TOKEN")
         return
 
-    load_games()  # Загрузка комнат при запуске
+    load_games()  # Загрузка перед запуском
     app = ApplicationBuilder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", get_host)],
+        entry_points=[CommandHandler("create", get_host)],
         states={
             HOST: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_host)],
             ROOM: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_room)],
@@ -249,8 +249,8 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", start))  # Главное меню
-    app.add_handler(conv_handler)  # Диалог создания комнаты
-    app.add_handler(CommandHandler("list", list_games))  # Список комнат
+    app.add_handler(conv_handler)  # Создание комнаты
+    app.add_handler(CommandHandler("list", list_games))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CallbackQueryHandler(handle_callback))
