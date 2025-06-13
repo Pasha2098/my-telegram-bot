@@ -138,7 +138,7 @@ async def input_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     room_code = user_data["room"]
 
     user_id = update.effective_user.id
-    for code, game in games.items():
+    for code, game in list(games.items()):
         if game["user_id"] == user_id:
             task = game.get("task")
             if task:
@@ -192,7 +192,7 @@ async def list_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for room_code, game in games.items():
         text_line = (
             f"👤 *{game['host']}*  |  🗺 *{game['map']}*  |  🎮 *{game['mode']}*  |  "
-            f"🔑 `{room_code}`"
+            f"🔑 [{room_code}](copy_{room_code})"
         )
         text_lines.append(text_line)
         buttons.append([InlineKeyboardButton(room_code, callback_data=f"copy_room:{room_code}")])
@@ -302,7 +302,7 @@ async def edit_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if choice == "Изменить карту":
-        await update.message.reply_text("Выберите новую карту:", reply_markup=MAPS_MENU)
+        await update.message.reply_text("Выберите карту:", reply_markup=MAPS_MENU)
         return MAP
 
     if choice not in MODES:
@@ -310,34 +310,30 @@ async def edit_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MODE
 
     room_code = context.user_data["edit_room"]
-    game = games.get(room_code)
-    if not game:
+    if room_code not in games:
         await update.message.reply_text("Румма не найдена.", reply_markup=MAIN_MENU)
         return ConversationHandler.END
 
-    game["map"] = context.user_data.get("new_map", game["map"])
-    game["mode"] = choice
+    games[room_code]["map"] = context.user_data["new_map"]
+    games[room_code]["mode"] = choice
     save_games()
 
-    msg = (
-        f"🛸 *Румма обновлена:*\n"
-        f"👤 Хост: *{game['host']}*\n"
-        f"🗺 Карта: *{game['map']}*\n"
-        f"🎮 Режим: *{game['mode']}*\n\n"
-        f"📥 Код комнаты: *{room_code}*"
+    await update.message.reply_text(
+        f"Румма {room_code} обновлена:\n"
+        f"🗺 Карта: {games[room_code]['map']}\n"
+        f"🎮 Режим: {games[room_code]['mode']}",
+        reply_markup=MAIN_MENU
     )
-    await update.message.reply_text(msg, reply_markup=MAIN_MENU, parse_mode="Markdown")
+
     context.user_data.pop("edit_room", None)
     context.user_data.pop("new_map", None)
     return ConversationHandler.END
 
-BOT_TOKEN = "7744582303:AAHRSRSGWRXafEexdx59hQQ6pj8N2dvgl9g"  # Твой токен
-
-if __name__ == "__main__":
+def main():
     load_games()
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    application = ApplicationBuilder().token("7744582303:AAHRSRSGWRXafEexdx59hQQ6pj8N2dvgl9g").build()
 
-    conv_handler = ConversationHandler(
+    new_room_handler = ConversationHandler(
         entry_points=[CommandHandler("newroom", get_host)],
         states={
             HOST: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_host)],
@@ -349,7 +345,7 @@ if __name__ == "__main__":
     )
 
     edit_conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(handle_callback, pattern=r"edit:.*", per_message=True)],
+        entry_points=[CallbackQueryHandler(handle_callback, pattern=r"edit:.*")],
         states={
             MAP: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_map)],
             MODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_mode)],
@@ -358,11 +354,14 @@ if __name__ == "__main__":
         allow_reentry=True,
     )
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("list", list_games))
-    app.add_handler(conv_handler)
-    app.add_handler(edit_conv_handler)
-    app.add_handler(CallbackQueryHandler(handle_callback, pattern="^(delete:|extend:|copy_room:)$"))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("list", list_games))
+    application.add_handler(new_room_handler)
+    application.add_handler(edit_conv_handler)
+    application.add_handler(CallbackQueryHandler(handle_callback))
 
-    app.run_polling()
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
