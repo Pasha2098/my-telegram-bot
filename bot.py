@@ -2,6 +2,7 @@ import os
 import re
 import datetime
 import asyncio
+import sys
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
@@ -229,6 +230,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 def main():
+    print("Python version:", sys.version)  # Вывод версии Python
+
     TOKEN = os.getenv("BOT_TOKEN")
     if not TOKEN:
         print("Ошибка: не задан токен бота в переменной окружения BOT_TOKEN")
